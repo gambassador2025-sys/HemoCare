@@ -23,7 +23,7 @@ class HbPredictor:
         if model_dir is None:
             # default: models directory at project root (same place as manage.py)
             project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            model_dir = os.path.join(project_root, '..', 'models')
+            model_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
             model_dir = os.path.abspath(model_dir)
         self.model_dir = model_dir
 
