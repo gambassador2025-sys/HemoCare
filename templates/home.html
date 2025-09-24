@@ -1,0 +1,55 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Hb-PPG Predictor</title>
+  <style>
+    body{font-family: Arial, Helvetica, sans-serif; max-width:720px;margin:40px auto;padding:10px}
+    input{padding:6px;margin:6px 0;width:200px}
+    label{display:block;margin-top:10px}
+    button{padding:8px 14px;margin-top:12px}
+    pre{background:#f6f6f6;padding:12px;border-radius:6px}
+  </style>
+</head>
+<body>
+  <h1>Hb-PPG Predictor</h1>
+  <p>Enter PPG features (Red, IR) plus Age & Gender and click <b>Predict</b>.</p>
+
+  <label>Red (a.u.): <input id="red" value="0.5" /></label>
+  <label>InfraRed (IR a.u.): <input id="ir" value="0.5" /></label>
+  <label>Gender (male/female): <input id="gender" value="male" /></label>
+  <label>Age (years): <input id="age" value="30" /></label>
+
+  <button onclick="doPredict()">Predict</button>
+
+  <h3>Result</h3>
+  <pre id="out">No prediction yet.</pre>
+
+<script>
+async function doPredict(){
+  const payload = {
+    red: parseFloat(document.getElementById('red').value),
+    ir: parseFloat(document.getElementById('ir').value),
+    gender: document.getElementById('gender').value,
+    age: parseFloat(document.getElementById('age').value)
+  };
+  const res = await fetch('/predict/', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const txt = await res.text();
+  if(res.ok){
+    try {
+      const j = JSON.parse(txt);
+      document.getElementById('out').innerText = JSON.stringify(j, null, 2);
+    } catch(e){
+      document.getElementById('out').innerText = txt;
+    }
+  } else {
+    document.getElementById('out').innerText = `Error ${res.status}: ${txt}`;
+  }
+}
+</script>
+</body>
+</html>
