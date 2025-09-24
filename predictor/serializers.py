@@ -3,11 +3,11 @@ from rest_framework import serializers
 class PredictRequestSerializer(serializers.Serializer):
     red = serializers.FloatField()
     ir = serializers.FloatField()
-    gender = serializers.ChoiceField(choices=['male','female','Male','Female','M','F'])
+    gender = serializers.ChoiceField()
     age = serializers.FloatField(min_value=0, max_value=130)
 
     def validate_gender(self, value):
-        v = str(value).lower()
+        v = str(value).strip().lower()
         if v in ['m','male']:
             return 'male'
         if v in ['f','female']:
