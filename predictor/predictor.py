@@ -1,79 +1,168 @@
-"""
-HbPredictor loader and wrapper.
-Expects a `models/` directory next to manage.py containing:
- - X_scaler.save
- - labelencoder.save
- - rf_model.joblib
- - gb_model.joblib
- - nn_ensemble.meta.joblib (optional) with keys: model_paths, y_mean, y_std
- - and the nn models referenced in model_paths (HDF5 .h5 or TF SavedModel)
-"""
+# predictor/predictor.py
 import os
+import glob
 import joblib
 import numpy as np
-
-# Keras import delayed to avoid heavy import on management commands that don't need prediction
-def _load_keras():
-    # import lazily
-    from tensorflow.keras.models import load_model
-    return load_model
+from typing import Optional
+from tensorflow.keras.models import load_model
+from tensorflow.keras import backend as K
+import threading
 
 class HbPredictor:
-    def __init__(self, model_dir=None):
-        if model_dir is None:
-            # default: models directory at project root (same place as manage.py)
-            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            model_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
-            model_dir = os.path.abspath(model_dir)
+    """
+    Lightweight predictor that:
+      - Loads small joblib models/scalers at init (X scaler, label encoder, rf, gb).
+      - Does NOT keep all Keras .h5 models in memory. Instead it loads each NN .h5
+        file one-by-one during predict(), gets predictions, then immediately deletes
+        it and clears Keras session to free memory.
+    """
+    def __init__(self, model_dir: str = "./models"):
         self.model_dir = model_dir
+        self._lock = threading.Lock()
+        # placeholders
+        self.X_scaler = None
+        self.labelencoder = None
+        self.rf_model = None
+        self.gb_model = None
+        self.nn_files = []  # list of paths to .h5 NN models
+        self._load_small_models()
 
-        # load required artifacts
-        self.X_scaler = joblib.load(os.path.join(self.model_dir, 'X_scaler.save'))
-        self.labelencoder = joblib.load(os.path.join(self.model_dir, 'labelencoder.save'))
-        self.rf = joblib.load(os.path.join(self.model_dir, 'rf_model.joblib'))
-        self.gb = joblib.load(os.path.join(self.model_dir, 'gb_model.joblib'))
+    def _load_small_models(self):
+        # load joblib scalers / classical models if present
+        # try common filenames based on your training code
+        x_scaler_paths = [
+            os.path.join(self.model_dir, "X_scaler.save"),
+            os.path.join(self.model_dir, "X_scaler.joblib"),
+            os.path.join(self.model_dir, "X_scaler.pkl"),
+        ]
+        for p in x_scaler_paths:
+            if os.path.exists(p):
+                self.X_scaler = joblib.load(p)
+                break
 
-        # Optional: NN ensemble metadata
-        self.nn_models = []
-        self.y_mean = 0.0
-        self.y_std = 1.0
-        nn_meta_path = os.path.join(self.model_dir, 'nn_ensemble.meta.joblib')
-        if os.path.exists(nn_meta_path):
-            meta = joblib.load(nn_meta_path)
-            self.y_mean = float(meta.get('y_mean', 0.0))
-            self.y_std = float(meta.get('y_std', 1.0))
-            model_paths = meta.get('model_paths', []) or []
-            load_model = _load_keras()
-            for p in model_paths:
-                p_abs = os.path.join(self.model_dir, os.path.basename(p)) if not os.path.isabs(p) else p
-                # allow both relative names or absolute
-                self.nn_models.append(load_model(p_abs, compile=False))
+        le_paths = [
+            os.path.join(self.model_dir, "labelencoder.save"),
+            os.path.join(self.model_dir, "labelencoder.joblib"),
+            os.path.join(self.model_dir, "labelencoder.pkl"),
+        ]
+        for p in le_paths:
+            if os.path.exists(p):
+                self.labelencoder = joblib.load(p)
+                break
 
-    def predict(self, red, ir, gender, age):
+        rf_paths = [
+            os.path.join(self.model_dir, "rf_model.joblib"),
+            os.path.join(self.model_dir, "rf_model.save"),
+            os.path.join(self.model_dir, "rf_model.pkl"),
+        ]
+        for p in rf_paths:
+            if os.path.exists(p):
+                self.rf_model = joblib.load(p)
+                break
+
+        gb_paths = [
+            os.path.join(self.model_dir, "gb_model.joblib"),
+            os.path.join(self.model_dir, "gb_model.save"),
+            os.path.join(self.model_dir, "gb_model.pkl"),
+        ]
+        for p in gb_paths:
+            if os.path.exists(p):
+                self.gb_model = joblib.load(p)
+                break
+
+        # find NN files (h5). We'll lazy-load them during predict
+        pattern = os.path.join(self.model_dir, "nn_*_bag*.h5")
+        files = sorted(glob.glob(pattern))
+        # also accept any .h5 in model_dir as fallback
+        if not files:
+            files = sorted(glob.glob(os.path.join(self.model_dir, "*.h5")))
+        self.nn_files = files
+
+    def _map_gender(self, gender):
+        # Accept many variants; return encoded string expected by labelencoder or manual mapping.
+        v = str(gender).strip().lower()
+        if v in ("m", "male"):
+            return "male"
+        if v in ("f", "female"):
+            return "female"
+        # fallback: just return as is
+        return v
+
+    def predict(self, red: float, ir: float, gender: str, age: float) -> float:
         """
-        Predict a single sample. `gender` must be normalized string matching label encoder labels
-        returned by PredictRequestSerializer (i.e., 'male' or 'female').
+        Returns a single float predicted hemoglobin.
+        This method is thread-safe.
         """
-        # labelencoder expects array-like
-        try:
-            gender_enc = int(self.labelencoder.transform([gender])[0])
-        except Exception as e:
-            # fallback mapping if transform fails (but this is unlikely if you saved the same encoder)
-            gender_enc = 1 if str(gender).lower().startswith('m') else 0
+        with self._lock:
+            # Build input array
+            g = self._map_gender(gender)
+            # if labelencoder is present, transform gender to encoded value
+            if self.labelencoder is not None:
+                try:
+                    gender_enc = int(self.labelencoder.transform([g])[0])
+                except Exception:
+                    # if transform fails, try lower/upper variants
+                    try:
+                        gender_enc = int(self.labelencoder.transform([g.capitalize()])[0])
+                    except Exception:
+                        # fallback: try manual mapping to 0/1
+                        gender_enc = 1 if g == "male" else 0
+            else:
+                gender_enc = 1 if g == "male" else 0
 
-        x = np.array([[red, ir, gender_enc, age]], dtype=np.float32)
-        x_s = self.X_scaler.transform(x)
+            x = np.array([[red, ir, gender_enc, age]], dtype=np.float32)
 
-        rf_pred = float(self.rf.predict(x_s)[0])
-        gb_pred = float(self.gb.predict(x_s)[0])
+            # apply X scaler if available
+            if self.X_scaler is not None:
+                try:
+                    x_scaled = self.X_scaler.transform(x)
+                except Exception:
+                    # if scaler expects different shape, try fallback
+                    x_scaled = x
+            else:
+                x_scaled = x
 
-        nn_preds = []
-        for m in self.nn_models:
-            p = m.predict(x_s, verbose=0).flatten()[0]
-            # convert back to original scale if saved as scaled target
-            p = p * self.y_std + self.y_mean
-            nn_preds.append(float(p))
+            preds = []
 
-        nn_mean = float(np.mean(nn_preds)) if len(nn_preds) > 0 else rf_pred
-        ensemble = (rf_pred + gb_pred + nn_mean) / 3.0
-        return ensemble
+            # RF prediction
+            if self.rf_model is not None:
+                try:
+                    rf_pred = self.rf_model.predict(x_scaled if hasattr(self.rf_model, "predict") else x)
+                    preds.append(float(rf_pred.flatten()[0]))
+                except Exception:
+                    pass
+
+            # GB prediction
+            if self.gb_model is not None:
+                try:
+                    gb_pred = self.gb_model.predict(x_scaled if hasattr(self.gb_model, "predict") else x)
+                    preds.append(float(gb_pred.flatten()[0]))
+                except Exception:
+                    pass
+
+            # NN ensemble predictions: load each .h5 model one by one, predict, then clear.
+            nn_preds = []
+            for nn_path in self.nn_files:
+                try:
+                    # load model with compile=False to reduce cost if you don't need training
+                    model = load_model(nn_path, compile=False)
+                    p = model.predict(x_scaled, verbose=0).flatten()[0]
+                    nn_preds.append(float(p))
+                    # free memory used by model
+                    del model
+                    K.clear_session()
+                except Exception:
+                    # if one model fails to load/predict, skip it
+                    continue
+
+            if nn_preds:
+                # average bagged NN predictions
+                nn_mean = float(np.mean(nn_preds))
+                preds.append(nn_mean)
+
+            if not preds:
+                raise RuntimeError("No models available to make prediction.")
+
+            # Final ensemble: simple average of available model predictions
+            final = float(np.mean(preds))
+            return final
