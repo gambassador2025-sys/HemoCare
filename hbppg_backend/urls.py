@@ -5,5 +5,5 @@ from django.views.generic import TemplateView
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', TemplateView.as_view(template_name='home.html'), name='home'),
-    path('', include('predictor.urls')),  # predictor app routes (e.g. /predict/)
+    path('api/', include('predictor.urls')),  # predictor app routes (e.g. /predict/)
 ]
