@@ -6,7 +6,7 @@ from .predictor import HbPredictor
 import threading
 
 # Load predictor once (thread-safe lazy init)
-_predictor = _predictor = HbPredictor(model_dir="./models")
+_predictor = _predictor = None
 _lock = threading.Lock()
 
 def get_predictor():
