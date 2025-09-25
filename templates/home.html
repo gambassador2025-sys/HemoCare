@@ -1,17 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>HemoCare - Anemia Prediction</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: 'Inter', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -19,88 +21,115 @@
             padding: 20px;
         }
         .container {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            padding: 40px;
-            max-width: 500px;
             width: 100%;
+            max-width: 560px;
+            background: rgba(255,255,255,0.97);
+            border-radius: 18px;
+            padding: 36px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.12);
             position: relative;
         }
         .container::before {
-            content: '';
+            content: "";
             position: absolute;
-            top: 0; left: 0; right: 0;
+            left: 0; right: 0; top: 0;
             height: 4px;
-            background: linear-gradient(90deg, #ff6b6b, #4ecdc4, #45b7d1);
+            border-top-left-radius: 18px;
+            border-top-right-radius: 18px;
+            background: linear-gradient(90deg,#ff6b6b,#4ecdc4,#45b7d1);
         }
-        .header { text-align: center; margin-bottom: 30px; }
+        .header { text-align: center; margin-bottom: 26px; }
         .logo {
-            width: 60px; height: 60px;
-            background: linear-gradient(135deg, #ff6b6b, #ee5a52);
-            border-radius: 50%;
-            margin: 0 auto 15px;
-            display: flex; align-items: center; justify-content: center;
+            width: 64px; height: 64px; margin: 0 auto 12px;
+            border-radius: 20px; display:flex;align-items:center;justify-content:center;
+            background: linear-gradient(135deg,#ff6b6b,#ff8a80);
+            box-shadow: 0 8px 18px rgba(0,0,0,0.06);
+            font-size: 28px;
         }
-        .logo::before { content: '🩸'; font-size: 24px; }
-        h1 {
-            font-family: 'Poppins', sans-serif;
-            color: #2c3e50; font-size: 28px; font-weight: 600;
-            margin-bottom: 8px;
-        }
-        .subtitle { color: #7f8c8d; font-size: 16px; }
-        .form-group { margin-bottom: 20px; }
-        label { display: block; margin-bottom: 6px; color: #34495e; font-weight: 500; }
+        h1 { font-family: 'Poppins', sans-serif; color: #213547; font-size: 26px; font-weight: 700; }
+        .subtitle { color: #6b7580; margin-top: 6px; font-size: 14px; }
+
+        form { margin-top: 8px; }
+        .form-group { margin-bottom: 16px; }
+        label { display: block; margin-bottom: 6px; color: #334e68; font-weight: 600; }
         input, select {
-            width: 100%; padding: 12px 16px;
-            border: 2px solid #e0e6ed; border-radius: 12px;
-            font-size: 16px; background: #f8f9fa;
-            transition: all 0.3s ease;
+            width: 100%; padding: 12px 14px; border-radius: 12px; border: 2px solid #e8eef6;
+            background: #fbfdff; font-size: 15px;
         }
-        input:focus, select:focus {
-            outline: none; border-color: #667eea; background: white;
-            box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
-        }
+        input:focus, select:focus { outline: none; border-color: #667eea; box-shadow: 0 6px 18px rgba(102,126,234,0.08); }
+
         .predict-btn {
-            width: 100%; padding: 14px 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white; border: none; border-radius: 12px;
-            font-family: 'Poppins', sans-serif;
-            font-size: 16px; font-weight: 600; cursor: pointer;
-            transition: all 0.3s ease;
+            display: block; width: 100%; padding: 14px 16px; border-radius: 12px;
+            border: none; cursor: pointer; font-weight: 700; font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg,#667eea,#764ba2); color: white; font-size: 15px;
+            transition: transform .12s ease, box-shadow .12s ease;
         }
-        .predict-btn:hover { box-shadow: 0 8px 20px rgba(102,126,234,0.3); }
+        .predict-btn:active { transform: translateY(1px); }
+        .predict-btn:hover { box-shadow: 0 10px 28px rgba(102,126,234,0.18); }
+
+        /* Result */
         .result {
-            margin-top: 20px; padding: 18px;
-            border-radius: 12px; text-align: center;
-            font-weight: 600; display: none;
+            margin-top: 20px; padding: 18px; border-radius: 12px; display:none;
+            text-align:center; font-weight:700; color: white; position:relative;
         }
-        .result.anemia { background: #ff7675; color: white; }
-        .result.no-anemia { background: #00b894; color: white; }
-        .error {
-            margin-top: 20px; padding: 15px;
-            border-radius: 12px; text-align: center;
-            background: #ff7675; color: white; display: none;
+        .status { font-size: 18px; margin-bottom: 6px; display:flex; align-items:center; justify-content:center; gap:12px; }
+        .value { font-size: 22px; font-weight:900; margin-bottom:6px; }
+        .threshold-note { font-size:13px; opacity:0.95; font-weight:600; }
+
+        /* Warning (anemia) style */
+        .result.anemia { background: linear-gradient(90deg,#ff6b6b,#ff4b4b); color: white; }
+        /* healthy style */
+        .result.no-anemia { background: linear-gradient(90deg,#00b894,#2ecc71); color: white; }
+
+        /* Icon styles and animations */
+        .icon {
+            width: 44px; height: 44px; display:inline-flex; align-items:center; justify-content:center;
+            flex-shrink:0; border-radius:8px;
         }
+
+        /* pulse for warning */
+        @keyframes pulse {
+            0% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(255,75,75,0.0)); }
+            50% { transform: scale(1.08); filter: drop-shadow(0 10px 26px rgba(255,75,75,0.18)); }
+            100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(255,75,75,0)); }
+        }
+        .icon.warn { background: rgba(255,255,255,0.06); animation: pulse 1.4s ease-in-out infinite; border: 1px solid rgba(255,255,255,0.08); }
+
+        /* subtle pop for healthy */
+        @keyframes pop {
+            0% { transform: scale(.98); opacity:.9; }
+            60% { transform: scale(1.03); opacity:1; }
+            100% { transform: scale(1); opacity:1; }
+        }
+        .icon.ok { animation: pop 0.45s ease both; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.06); }
+
+        /* SVGs size */
+        .icon svg { width: 22px; height: 22px; display:block; }
+
+        .error { margin-top: 14px; padding: 12px 14px; border-radius: 10px; display:none; background:#ff7675; color:white; font-weight:700; text-align:center; }
+
+        .muted { color: rgba(255,255,255,0.9); font-weight:600; font-size:13px; margin-top:8px; text-align:center; }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="container" role="main">
         <div class="header">
-            <div class="logo"></div>
+            <div class="logo">🩸</div>
             <h1>HemoCare</h1>
             <p class="subtitle">AI-Powered Anemia Detection</p>
         </div>
 
-        <form id="predictionForm">
+        <form id="predictionForm" aria-label="Anemia prediction form">
             <div class="form-group">
                 <label for="red">Red Light Absorption</label>
-                <input type="number" id="red" name="red" step="0.01" required>
+                <input id="red" name="red" type="number" step="0.01" required />
             </div>
+
             <div class="form-group">
                 <label for="ir">Infrared Light Absorption</label>
-                <input type="number" id="ir" name="ir" step="0.01" required>
+                <input id="ir" name="ir" type="number" step="0.01" required />
             </div>
+
             <div class="form-group">
                 <label for="gender">Gender</label>
                 <select id="gender" name="gender" required>
@@ -109,50 +138,138 @@
                     <option value="female">Female</option>
                 </select>
             </div>
+
             <div class="form-group">
                 <label for="age">Age (years)</label>
-                <input type="number" id="age" name="age" min="1" max="120" required>
+                <input id="age" name="age" type="number" min="0" max="130" required />
             </div>
+
             <button type="submit" class="predict-btn">Predict</button>
         </form>
 
-        <div class="result" id="result"></div>
-        <div class="error" id="error"></div>
+        <!-- Result area -->
+        <div id="result" class="result" role="status" aria-live="polite">
+            <div class="status" id="statusRow">
+                <!-- icon + text injected by JS -->
+            </div>
+            <div class="value" id="hbValue"></div>
+            <div class="threshold-note" id="thresholdNote"></div>
+        </div>
+
+        <div id="error" class="error" role="alert" aria-live="assertive"></div>
+
+        <div class="muted" style="margin-top:14px; font-size:13px;">
+            Tip: If unsure about thresholds for your population, adjust the cutoffs in the UI script.
+        </div>
     </div>
 
     <script>
         const form = document.getElementById('predictionForm');
-        const resultDiv = document.getElementById('result');
-        const errorDiv = document.getElementById('error');
+        const resultEl = document.getElementById('result');
+        const statusRow = document.getElementById('statusRow');
+        const hbValueEl = document.getElementById('hbValue');
+        const thresholdNote = document.getElementById('thresholdNote');
+        const errorEl = document.getElementById('error');
 
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            resultDiv.style.display = 'none';
-            errorDiv.style.display = 'none';
+        // Decide threshold logic (you can edit these defaults)
+        // Per your request: use 11.0 for women/children (age < 12), otherwise default 12.0
+        function computeThreshold(gender, age) {
+            const ageNum = Number(age);
+            const g = String(gender || '').trim().toLowerCase();
+
+            // Age-based rule: children
+            if (!Number.isNaN(ageNum) && ageNum < 12) {
+                return 11.0;
+            }
+            // Gender-based rule (user requested 11.0 for women/children)
+            if (g === 'female') {
+                return 11.0;
+            }
+            // fallback default for others
+            return 12.0;
+        }
+
+        // SVG icons (inline)
+        const warnSvg = `
+            <div class="icon warn" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M1 21h22L12 2 1 21z" fill="#fff" opacity="0.06"/>
+                    <path d="M12 9v4" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 17h.01" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+        `;
+        const okSvg = `
+            <div class="icon ok" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10" stroke="#fff" stroke-width="1.5" opacity="0.08" />
+                    <path d="M7 12.5l2.5 2.5L17 8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+        `;
+
+        form.addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            resultEl.style.display = 'none';
+            errorEl.style.display = 'none';
 
             const data = {
                 red: parseFloat(document.getElementById('red').value),
                 ir: parseFloat(document.getElementById('ir').value),
                 gender: document.getElementById('gender').value,
-                age: parseInt(document.getElementById('age').value)
+                age: parseFloat(document.getElementById('age').value)
             };
 
+            // Basic frontend validation
+            if (!isFinite(data.red) || !isFinite(data.ir) || !isFinite(data.age) || !data.gender) {
+                errorEl.textContent = 'Please complete all fields with valid numbers.';
+                errorEl.style.display = 'block';
+                return;
+            }
+
             try {
-                const response = await fetch('/api/predict/', {
+                const resp = await fetch('/api/predict/', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({
+                        red: data.red, ir: data.ir, gender: data.gender, age: data.age
+                    })
                 });
 
-                if (!response.ok) throw new Error(`Server error: ${response.status}`);
+                if (!resp.ok) {
+                    let msg = `Server error: ${resp.status}`;
+                    try {
+                        const js = await resp.json();
+                        if (js && typeof js === 'object') msg = JSON.stringify(js);
+                    } catch(e){}
+                    throw new Error(msg);
+                }
 
-                const prediction = await response.json();
-                resultDiv.textContent = `Predicted Hb: ${prediction.predicted_hb}`;
-                resultDiv.className = 'result ' + (prediction.predicted_hb < 12 ? 'anemia' : 'no-anemia');
-                resultDiv.style.display = 'block';
+                const json = await resp.json();
+                const hb = Number(json.predicted_hb);
+
+                if (!isFinite(hb)) throw new Error('Invalid prediction returned by server.');
+
+                // compute threshold for this request
+                const threshold = computeThreshold(data.gender, data.age);
+
+                // Update UI
+                hbValueEl.textContent = `Hb: ${hb.toFixed(3)} g/dL`;
+                thresholdNote.textContent = `Threshold used: ${threshold.toFixed(1)} g/dL (based on gender/age)`;
+
+                // Anemia if hb < threshold
+                if (hb < threshold) {
+                    statusRow.innerHTML = `${warnSvg} <div>Warning — possible anemia</div>`;
+                    resultEl.className = 'result anemia';
+                } else {
+                    statusRow.innerHTML = `${okSvg} <div>Low risk of anemia</div>`;
+                    resultEl.className = 'result no-anemia';
+                }
+
+                resultEl.style.display = 'block';
             } catch (err) {
-                errorDiv.textContent = 'Error: ' + err.message;
-                errorDiv.style.display = 'block';
+                errorEl.textContent = 'Error: ' + (err.message || err);
+                errorEl.style.display = 'block';
             }
         });
     </script>
