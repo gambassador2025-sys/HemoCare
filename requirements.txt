@@ -3,6 +3,6 @@ djangorestframework>=3.14
 numpy
 pandas
 scikit-learn==1.6.1
-tensorflow>=2.13
+tensorflow-cpu>=2.13
 joblib
 gunicorn
