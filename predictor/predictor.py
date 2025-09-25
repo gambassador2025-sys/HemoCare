@@ -3,7 +3,7 @@ import os
 import glob
 import joblib
 import numpy as np
-from typing import List, Optional
+from typing import List, Optional, Union
 from tensorflow.keras.models import load_model
 import threading
 import logging
@@ -11,15 +11,10 @@ import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# Config via env
 MAX_NN_MODELS = int(os.environ.get("MAX_NN_MODELS", "3"))
 USE_NN = os.environ.get("USE_NN", "1") not in ("0", "false", "False")
 
 class HbPredictor:
-    """
-    Loads small joblib models and (optionally) a limited number of Keras .h5 models
-    at startup. Models are reused across requests to avoid repeated loading and OOM.
-    """
     def __init__(self, model_dir: str = "./models"):
         self.model_dir = model_dir
         self._lock = threading.Lock()
@@ -27,8 +22,9 @@ class HbPredictor:
         self.labelencoder = None
         self.rf_model = None
         self.gb_model = None
-        self.nn_models = []  # loaded keras models
+        self.nn_models = []          # loaded keras models
         self._nn_paths = []
+        self.nn_meta = None          # will hold {'y_mean':.., 'y_std':.., 'model_paths':[...] } if present
         self._load_small_models()
         if USE_NN:
             self._discover_nn_paths()
@@ -81,41 +77,45 @@ class HbPredictor:
                     logger.warning(f"Failed to load GB model {path}: {e}")
                 break
 
-    def _discover_nn_paths(self):
-        # prefer nn_ensemble.meta.joblib if present (training script saved it)
+        # try to load nn meta (y_mean/y_std)
         meta_path = os.path.join(self.model_dir, "nn_ensemble.meta.joblib")
         if os.path.exists(meta_path):
             try:
                 meta = joblib.load(meta_path)
-                paths = meta.get("model_paths") if isinstance(meta, dict) else None
-                if paths:
-                    # normalize to absolute paths in models dir
-                    self._nn_paths = [os.path.join(self.model_dir, os.path.basename(p)) for p in paths]
-                    # only include those that actually exist
-                    self._nn_paths = [p for p in self._nn_paths if os.path.exists(p)]
-                    logger.info(f"nn_ensemble.meta.joblib provided {len(self._nn_paths)} paths")
-                else:
-                    logger.info("nn_ensemble.meta.joblib present but no 'model_paths' key")
+                if isinstance(meta, dict):
+                    self.nn_meta = meta
+                    logger.info(f"Loaded NN ensemble meta from {meta_path} (keys: {list(meta.keys())})")
             except Exception as e:
-                logger.warning(f"Failed to read nn_ensemble.meta.joblib: {e}")
+                logger.warning(f"Failed to load nn_ensemble.meta.joblib: {e}")
 
-        # fallback: glob for .h5 files
-        if not self._nn_paths:
-            pattern = os.path.join(self.model_dir, "nn_*_bag*.h5")
-            files = sorted(glob.glob(pattern))
-            if not files:
-                files = sorted(glob.glob(os.path.join(self.model_dir, "*.h5")))
-            self._nn_paths = files
-            logger.info(f"Discovered {len(self._nn_paths)} .h5 models by glob")
+    def _discover_nn_paths(self):
+        # prefer nn_ensemble.meta joblib 'model_paths' if present
+        if self.nn_meta and "model_paths" in self.nn_meta:
+            candidate_paths = []
+            for p in self.nn_meta.get("model_paths", []):
+                # meta might store relative paths; normalize to model_dir
+                candidate = os.path.join(self.model_dir, os.path.basename(p))
+                if os.path.exists(candidate):
+                    candidate_paths.append(candidate)
+            if candidate_paths:
+                self._nn_paths = candidate_paths
+                logger.info(f"Using {len(self._nn_paths)} NN paths from meta file")
+                return
+
+        # fallback: find .h5 files
+        pattern = os.path.join(self.model_dir, "nn_*_bag*.h5")
+        files = sorted(glob.glob(pattern))
+        if not files:
+            files = sorted(glob.glob(os.path.join(self.model_dir, "*.h5")))
+        self._nn_paths = files
+        logger.info(f"Discovered {len(self._nn_paths)} .h5 NN files by glob")
 
     def _select_nn_to_load(self) -> List[str]:
-        # Select up to MAX_NN_MODELS evenly across available files if many
         if not self._nn_paths:
             return []
         n_total = len(self._nn_paths)
         if n_total <= MAX_NN_MODELS:
             return self._nn_paths
-        # choose indices spread across folds: simple downsampling
         indices = np.linspace(0, n_total - 1, num=MAX_NN_MODELS, dtype=int)
         selected = [self._nn_paths[i] for i in indices]
         logger.info(f"Selecting {len(selected)}/{n_total} NN models to load: {[os.path.basename(p) for p in selected]}")
@@ -124,13 +124,13 @@ class HbPredictor:
     def _load_nn_models(self):
         selected = self._select_nn_to_load()
         loaded = []
-        for path in selected:
+        for p in selected:
             try:
-                m = load_model(path, compile=False)
+                m = load_model(p, compile=False)
                 loaded.append(m)
-                logger.info(f"Loaded NN model {os.path.basename(path)}")
+                logger.info(f"Loaded NN model {os.path.basename(p)}")
             except Exception as e:
-                logger.warning(f"Failed to load NN model {path}: {e}")
+                logger.warning(f"Failed to load NN model {p}: {e}")
         self.nn_models = loaded
         logger.info(f"Total NN models loaded: {len(self.nn_models)}")
 
@@ -142,7 +142,23 @@ class HbPredictor:
             return "female"
         return v
 
-    def predict(self, red: float, ir: float, gender: str, age: float) -> float:
+    def _unscale_nn_pred(self, val: float) -> float:
+        """If nn_meta contains y_mean and y_std, convert model output back to original units."""
+        if not self.nn_meta:
+            return val
+        try:
+            y_mean = float(self.nn_meta.get("y_mean", 0.0))
+            y_std = float(self.nn_meta.get("y_std", 1.0))
+            return float(val * y_std + y_mean)
+        except Exception:
+            return val
+
+    def predict(self, red: float, ir: float, gender: str, age: float, debug: bool = False) -> Union[float, dict]:
+        """
+        If debug=True, returns a dict with per-model preds:
+        { "rf":..., "gb":..., "nn": [...], "final": ... }
+        Otherwise returns a float final prediction.
+        """
         with self._lock:
             g = self._map_gender(gender)
             if self.labelencoder is not None:
@@ -158,7 +174,6 @@ class HbPredictor:
 
             x = np.array([[red, ir, gender_enc, age]], dtype=np.float32)
 
-            # scale if scaler present
             if self.X_scaler is not None:
                 try:
                     x_scaled = self.X_scaler.transform(x)
@@ -168,36 +183,43 @@ class HbPredictor:
                 x_scaled = x
 
             preds = []
+            breakdown = {"rf": None, "gb": None, "nn": []}
 
-            # classical models
             if self.rf_model is not None:
                 try:
                     rf_pred = self.rf_model.predict(x_scaled)
-                    preds.append(float(np.ravel(rf_pred)[0]))
+                    rf_val = float(np.ravel(rf_pred)[0])
+                    breakdown["rf"] = rf_val
+                    preds.append(rf_val)
                 except Exception as e:
-                    logger.warning(f"RF prediction failed: {e}")
+                    logger.warning(f"RF predict error: {e}")
+
             if self.gb_model is not None:
                 try:
                     gb_pred = self.gb_model.predict(x_scaled)
-                    preds.append(float(np.ravel(gb_pred)[0]))
+                    gb_val = float(np.ravel(gb_pred)[0])
+                    breakdown["gb"] = gb_val
+                    preds.append(gb_val)
                 except Exception as e:
-                    logger.warning(f"GB prediction failed: {e}")
+                    logger.warning(f"GB predict error: {e}")
 
-            # NN ensemble if loaded
             nn_preds = []
             for m in self.nn_models:
                 try:
-                    p = m.predict(x_scaled, verbose=0).flatten()[0]
-                    nn_preds.append(float(p))
+                    raw = m.predict(x_scaled, verbose=0).flatten()[0]
+                    unscaled = self._unscale_nn_pred(float(raw))
+                    nn_preds.append(unscaled)
                 except Exception as e:
-                    logger.warning(f"NN model predict error: {e}")
-                    continue
+                    logger.warning(f"NN predict failed: {e}")
             if nn_preds:
+                breakdown["nn"] = nn_preds
                 preds.append(float(np.mean(nn_preds)))
 
             if not preds:
-                # final fallback: raise explicit error so caller can respond 500
-                raise RuntimeError("No models available to make prediction. Ensure rf/gb or NN models exist and are loadable.")
+                raise RuntimeError("No models available to make prediction. Ensure rf/gb or NN exist and loadable.")
 
             final = float(np.mean(preds))
+
+            if debug:
+                return {**breakdown, "final": final}
             return final
